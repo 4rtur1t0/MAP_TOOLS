@@ -264,6 +264,87 @@ class LiDARScanArray:
         o3d.visualization.draw_geometries([pointcloud_global])
         return pointcloud_global
 
+    def delete_empty_spaces_in_map(self, pointcloud_global, global_transforms, keyframe_sampling=10, radii=None, heights=None, voxel_size=0.1):
+        """
+        Caution: in this case, the map is built using a pointcloud and adding the points to it. This may require a great
+        amount of memory, however the result may be saved easily
+        """
+        if radii is None:
+            radii = [0.5, 35.0]
+        if heights is None:
+            heights = [-120.0, 120.0]
+        pointcloud_global_kdtree = o3d.geometry.KDTreeFlann(pointcloud_global)
+        # paint global pointcloud
+        pointcloud_global.paint_uniform_color([0.5, 0.5, 0.5])
+
+        # Visualize the points to remove.
+        pointcloud_remove = o3d.geometry.PointCloud()
+
+        radius_remove = 0.2
+        print(30*'=')
+        print('NOW, DELETE EMPTY SPACES')
+        print('FOR EACH POINTCLOUD, FIND THE POINTS THAT SHOULD BE IN EMPTY SPACES AND REMOVE THEM')
+        print(30 * '=')
+        all_indices = set()
+        for i in range(0, len(self.lidar_scans), keyframe_sampling):
+            print("Keyframe: ", i, "out of: ", len(self.lidar_scans), end='\n')
+            kf = self.lidar_scans[i]
+            kf.load_pointcloud()
+            kf.filter_radius(radii=radii)
+            kf.filter_height(heights=heights)
+            kf.down_sample(voxel_size=voxel_size)
+            Ti = global_transforms[i]
+            # transform to global and
+            pointcloud_temp = kf.transform(T=Ti.array)
+            pi = Ti.pos()
+            points_global = pointcloud_temp.points
+
+            # for each point in pointcloud
+            for pj in points_global:
+                dist = 0.5*np.linalg.norm(pj-pi) #-10*radius_remove
+                n = int(dist/(2*radius_remove))
+                t = np.linspace(0.0, 0.5, n)
+                for ti in t:
+                    # interpolate point
+                    pn = (1.0-ti)*pi + ti*pj
+                    # find indices close to the point
+                    [_, idxs, _] = pointcloud_global_kdtree.search_radius_vector_3d(pn, radius_remove)
+                    # add to the list.
+                    all_indices.update(idxs)
+            # nearby_points = np.asarray(pointcloud_global.points)[list(all_indices)]
+            # pointcloud_remove.points = o3d.utility.Vector3dVector(nearby_points)
+            # pointcloud_remove.paint_uniform_color([1, 0, 0])
+            # draw the whole map and the points to remove
+            # o3d.visualization.draw_geometries([pointcloud_global, pointcloud_remove])
+            # unload pointcloud to save memory
+            kf.unload_pointcloud()
+
+
+            # nearby_points = np.asarray(pointcloud_global.points)[idxs]
+            # print('Found ', len(nearby_points), 'at the robot moving origin')
+            # build a temporary removal pointcloud
+            # pointcloud_remove_temp = o3d.geometry.PointCloud()
+            # pointcloud_remove_temp.points = o3d.utility.Vector3dVector(nearby_points)
+            # yuxtaponer los pointclouds
+            # pointcloud_remove = pointcloud_remove + pointcloud_remove_temp
+
+        print('FINISHED! Use the renderer to view the map')
+        # pointcloud_global.paint_uniform_color([0.5, 0.5, 0.5])
+
+
+        # pointcloud_remove.points = pointcloud_global.points[all_indices]
+        # pointcloud_remove.paint_uniform_color([1, 0, 0])
+
+        # draw the whole map and the points to remove
+        # o3d.visualization.draw_geometries([pointcloud_global, pointcloud_remove])
+
+        # remove the points and draw
+        pcd_filtered = pointcloud_global.select_by_index(list(all_indices), invert=True)
+        pcd_filtered.paint_uniform_color([0, 0, 1])
+        # draw the whole map
+        o3d.visualization.draw_geometries([pointcloud_global, pcd_filtered])
+        return pointcloud_global
+
 
 
 

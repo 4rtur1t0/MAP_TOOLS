@@ -115,8 +115,28 @@ class Map():
                                                    radii=[0.5, 120],
                                                    heights=[-2, 50],
                                                    keyframe_sampling=keyframe_sampling)
+
+        # if delete_dynamic_objects:
+        #     global_pcd = self.lidarscanarray.delete_empty_spaces_in_map(pointcloud_global=global_pcd,
+        #                                                global_transforms=global_transforms,
+        #                                                voxel_size=voxel_size,
+        #                                                radii=[0.5, 120],
+        #                                                heights=[-2, 50],
+        #                                                keyframe_sampling=keyframe_sampling)
         if filename:
             o3d.io.write_point_cloud(filename=filename, pointcloud=global_pcd, print_progress=True)
+        return global_pcd
+
+    def delete_empty_spaces_in_map(self, pointcloud_global, voxel_size, radii,
+                                   heights,  keyframe_sampling):
+        global_transforms = self.robotpath.get_transforms()
+        global_pcd = self.lidarscanarray.delete_empty_spaces_in_map(pointcloud_global=pointcloud_global,
+                                                       global_transforms=global_transforms,
+                                                       voxel_size=voxel_size,
+                                                       radii=radii,
+                                                       heights=heights,
+                                                       keyframe_sampling=keyframe_sampling)
+        return global_pcd
 
     def build_occupancy_grid_map(self, filename, voxel_size, keyframe_sampling=20):
         """
