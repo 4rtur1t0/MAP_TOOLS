@@ -1,0 +1,110 @@
+PROCESO GENERAL
+- run extract_rosbag --> .bag to files!
+- correr dump config kiss_slam
+- modificar yaml para incluir un directorio de salida
+- Ojo. el directorio de salida tiene que tener permisos de escritura/lectura para el proceso
+./kiss_slam_pipeline --config /media/arvc/INTENSO/DATASETS/INDOOR_OUTDOOR/IO2-2025-03-25-16-54-17/robot0/kiss_slam.yaml --visualize /media/arvc/INTENSO/DATASETS/INDOOR_OUTDOOR/IO2-2025-03-25-16-54-17/robot0/lidar/data_short
+
+- El directorio de salida está en el fichero kiss_slam.yaml.
+- Buscar el resultado en formato tum latest y copiarlo al directorio IO2-2025-03-25-16-54-17
+- ojo. el fichero de tum tiene una salida en índices. Cada índice es el orden del fichero .pcd del directorio del lidar.
+- correr run_map_builder. (se visualiza y se guarda el fichero en pcd.)
+
+
+- Se corre rum_map_builder. Se especifica el nombre del fichero en formato TUM. El formato tum indica un índice
+en la primera columna. Se le pasa al lidar scanner. El lidar scanner toma los nombres de los ficheros y todo
+funciona correctamente
+
+KISS SLAM
+Instalar en un entorno virtual Applications/venv/
+cd Applications/venv
+./pip install kiss-slam
+
+Para obtener la ayuda:
+kiss_slam_pipeline --help
+
+Para generar un yaml de ejemplo
+kiss_slam_dump_config
+
+Un ejemplo para correr. Se especifica la ubicación del yaml.
+Dentro del yaml se especifica la ubicació del directorio de salida en formato tum
+$ ./kiss_slam_pipeline --config /media/arvc/INTENSO/DATASETS/INDOOR_OUTDOOR/IO2-2025-03-25-16-54-17/robot0/kiss_slam.yaml --visualize /media/arvc/INTENSO/DATASETS/INDOOR_OUTDOOR/IO2-2025-03-25-16-54-17/robot0/lidar/data_short
+
+$ copiar el fichero de data_poses_tum.txt al directorio de datos /media/arvc/INTENSO/DATASETS/INDOOR_OUTDOOR/IO2-2025-03-25-16-54-17/robot0/SLAM
+
+$ correr LIDAR_ARUCO_SLAM run_map_builder.py --> genera global_map.pcd
+
+
+
+
+
+
+
+
+
+
+- Correr genz-icp con un rosbag. Alternativamente, correr
+- Guardar el path en csv (tools/save_ros_path.py).
+- Correr run_graphSLAM.py.
+
+
+PASOS:
+    - 1) Se calcula un scanmatching sobre las nubes de puntos capturadas.
+            - Se puede calcualr usando run_scanmatcher.py
+            - Se puede calcular usando Genz-ICP (abajo)
+
+
+- 2) Se calcula el mapa integrando todas las medidas:
+- Scanmatching local (LIDAR). Con Genz-ICP o scanmatching
+- Scanmatching global (LIDAR)
+- Odometría.
+- GPS.
+- ARUCO.
+
+2.1) Los primeros mapas han tenido algún problema al intentar meter ARUCO.
+2.2) Vamos a probar a hacer mapas.
+2.2.1)
+- Con Scanmatching local.
+- Con odometria.
+- Con GPS.
+- Con Scanmatching global.
+2.2.2)
+
+
+
+GENZ-ICP
+Un scanmatcher que mantiene un mapa local.
+INSTALACIÓN
+
+mkdir -p ~/catkin_ws/src
+cd ~/catkin_ws/src
+git clone https://github.com/cocel-postech/genz-icp.git
+cd ..
+catkin build genz_icp --cmake-args -DCMAKE_BUILD_TYPE=Release
+source ~/catkin_ws/devel/setup.bash
+
+Notas: es posible que haya que borrar los directorios build del catkin_ws.
+Nota: dio un error en un fichero de instalación de python. Es necesario editar el fichero y quitar el argumento
+que produce el error.
+
+RUNNING
+- Ojo, es necesario activar/desactivar rviz (muere el proceso).
+
+
+PARAMETER TUNING
+------------------------------------------------------------------------
+>> rosbag play IO2-2025-03-25-16-54-17.bag --clock -r0.5 --start 0
+----------------------------------------------------------------------
+
+TESTS
+----------------------------------------------------------------------
+- (corridor.yaml)
+>> roslaunch genz_icp odometry_modified.launch topic:=/ouster/points_low_rate config_file:=corridor.yaml
+RESULTADOS: Se apaga rviz para ahorrar memoria.
+1 diverge inicialmente. Wall elapsed: 50
+2 correcto
+3 correcto.
+----------------------------------------------------------------------
+
+Para lanzar Rviz (se mata para ahorrar memoria).
+$ rviz -d /home/arvc/catkin_ws/src/genz-icp/ros/rviz/genz_icp_ros1_modified.rviz
