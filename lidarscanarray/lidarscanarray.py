@@ -275,17 +275,18 @@ class LiDARScanArray:
             heights = [-120.0, 120.0]
         pointcloud_global_kdtree = o3d.geometry.KDTreeFlann(pointcloud_global)
         # paint global pointcloud
-        pointcloud_global.paint_uniform_color([0.5, 0.5, 0.5])
+        # pointcloud_global.paint_uniform_color([0.1, 0.1, 0.8])
 
-        # Visualize the points to remove.
+        # Visualize the points to remove
         pointcloud_remove = o3d.geometry.PointCloud()
-
-        radius_remove = 0.2
+        # caution . radius
+        # radius_remove = 0.2
         print(30*'=')
         print('NOW, DELETE EMPTY SPACES')
         print('FOR EACH POINTCLOUD, FIND THE POINTS THAT SHOULD BE IN EMPTY SPACES AND REMOVE THEM')
         print(30 * '=')
         all_indices = set()
+        # for i in range(0, len(self.lidar_scans), keyframe_sampling):
         for i in range(0, len(self.lidar_scans), keyframe_sampling):
             print("Keyframe: ", i, "out of: ", len(self.lidar_scans), end='\n')
             kf = self.lidar_scans[i]
@@ -297,56 +298,66 @@ class LiDARScanArray:
             # transform to global and
             pointcloud_temp = kf.transform(T=Ti.array)
             pi = Ti.pos()
-            points_global = pointcloud_temp.points
-
-            # for each point in pointcloud
-            for pj in points_global:
-                dist = 0.5*np.linalg.norm(pj-pi) #-10*radius_remove
-                n = int(dist/(2*radius_remove))
-                t = np.linspace(0.0, 0.5, n)
-                for ti in t:
-                    # interpolate point
-                    pn = (1.0-ti)*pi + ti*pj
-                    # find indices close to the point
-                    [_, idxs, _] = pointcloud_global_kdtree.search_radius_vector_3d(pn, radius_remove)
-                    # add to the list.
-                    all_indices.update(idxs)
-            # nearby_points = np.asarray(pointcloud_global.points)[list(all_indices)]
-            # pointcloud_remove.points = o3d.utility.Vector3dVector(nearby_points)
-            # pointcloud_remove.paint_uniform_color([1, 0, 0])
+            points_global_i = pointcloud_temp.points
+            # remove local points between pi (origin) and points_global_i using spheres of radius r
+            idxs = self.delete_empty_spaces_at_local(pointcloud_global_kdtree, pi, points_global_i)
+            all_indices.update(idxs)
+            # removable_points = np.asarray(pointcloud_global.points)[list(idxs)]
+            # pointcloud_remove.points = o3d.utility.Vector3dVector(removable_points)
+            # pointcloud_remove.paint_uniform_color([1.0, 0, 0])
             # draw the whole map and the points to remove
             # o3d.visualization.draw_geometries([pointcloud_global, pointcloud_remove])
             # unload pointcloud to save memory
             kf.unload_pointcloud()
 
 
-            # nearby_points = np.asarray(pointcloud_global.points)[idxs]
-            # print('Found ', len(nearby_points), 'at the robot moving origin')
-            # build a temporary removal pointcloud
-            # pointcloud_remove_temp = o3d.geometry.PointCloud()
-            # pointcloud_remove_temp.points = o3d.utility.Vector3dVector(nearby_points)
-            # yuxtaponer los pointclouds
-            # pointcloud_remove = pointcloud_remove + pointcloud_remove_temp
-
+        # removable_points = np.asarray(pointcloud_global.points)[all_indices]
+        # print('Found ', len(removable_points), 'dynamic points on the whole process at the robot moving origin')
+        # build a temporary removal pointcloud
+        # pointcloud_remove.points = o3d.utility.Vector3dVector(removable_points)
         print('FINISHED! Use the renderer to view the map')
-        # pointcloud_global.paint_uniform_color([0.5, 0.5, 0.5])
-
-
-        # pointcloud_remove.points = pointcloud_global.points[all_indices]
-        # pointcloud_remove.paint_uniform_color([1, 0, 0])
-
-        # draw the whole map and the points to remove
-        # o3d.visualization.draw_geometries([pointcloud_global, pointcloud_remove])
+        pcd_dynamic = pointcloud_global.select_by_index(list(all_indices), invert=False)
+        # pcd_filtered.paint_uniform_color([0, 0, 1])
+        o3d.visualization.draw_geometries([pcd_dynamic])
 
         # remove the points and draw
         pcd_filtered = pointcloud_global.select_by_index(list(all_indices), invert=True)
-        pcd_filtered.paint_uniform_color([0, 0, 1])
+        # pcd_filtered.paint_uniform_color([0, 0, 1])
+        o3d.visualization.draw_geometries([pcd_filtered])
         # draw the whole map
         o3d.visualization.draw_geometries([pointcloud_global, pcd_filtered])
         return pointcloud_global
 
 
-
+    def delete_empty_spaces_at_local(self, pointcloud_global_kdtree, pi, points_global_i):
+        # robot radius remove must be > than beam radius remove
+        robot_radius_remove = 0.3
+        beam_radius_remove = 0.2
+        local_indices = set()
+        # remove at the robot center. use a radius that approximates the whole robot
+        [_, idxs, _] = pointcloud_global_kdtree.search_radius_vector_3d(pi, robot_radius_remove)
+        local_indices.update(idxs)
+        # for each point in pointcloud, find interpolations
+        for pj in points_global_i:
+            # the distance from the LiDAR origin to the point
+            dist = np.linalg.norm(pj - pi)
+            if dist == 0:
+                continue
+            if dist <= robot_radius_remove:
+                continue
+            u = (pj - pi)/dist
+            r1 = robot_radius_remove
+            r2 = dist-2*beam_radius_remove
+            n = int(np.ceil((r2-r1)/(2*beam_radius_remove)))
+            r = np.linspace(r1, r2, n)
+            for ri in r:
+                # interpolate point using initial point, unit vector and interpolated distance
+                pn = pi + ri*u
+                # find indices close to the point
+                [_, idxs, _] = pointcloud_global_kdtree.search_radius_vector_3d(pn, beam_radius_remove)
+                # add to the list.
+                local_indices.update(idxs)
+        return local_indices
 
 
 

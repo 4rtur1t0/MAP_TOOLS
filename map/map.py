@@ -105,7 +105,7 @@ class Map():
                                      heights=[-2, 50],
                                      keyframe_sampling=keyframe_sampling)
 
-    def build_map(self, voxel_size, keyframe_sampling=20, filename='global_map.pcd'):
+    def build_map(self, voxel_size, keyframe_sampling=20):
         """
         Builds a global pcd map and writes to disk.
         """
@@ -123,9 +123,12 @@ class Map():
         #                                                radii=[0.5, 120],
         #                                                heights=[-2, 50],
         #                                                keyframe_sampling=keyframe_sampling)
-        if filename:
-            o3d.io.write_point_cloud(filename=filename, pointcloud=global_pcd, print_progress=True)
+        # if filename:
+        #     o3d.io.write_point_cloud(filename=filename, pointcloud=global_pcd, print_progress=True)
         return global_pcd
+
+    def save_pcd_to_file(self, pointcloud, filename='global_map.pcd'):
+        o3d.io.write_point_cloud(filename=filename, pointcloud=pointcloud, print_progress=True)
 
     def delete_empty_spaces_in_map(self, pointcloud_global, voxel_size, radii,
                                    heights,  keyframe_sampling):
