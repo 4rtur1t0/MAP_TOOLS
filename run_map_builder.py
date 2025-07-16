@@ -10,6 +10,7 @@
          for example, PRM, may not be direct
 """
 from map.map import Map
+import open3d as o3d
 
 
 def map_viewer():
@@ -26,7 +27,8 @@ def map_viewer():
     keyframe_sampling = 20
     # keyframe_sampling = 500
     # use, for example, voxel_size=0.2. Use voxel_size=None to use full resolution
-    voxel_size = 0.2
+    # we are voxelizing the local scans and the resulting global map as well
+    voxel_size = 0.1
     maplidar = Map()
     # read the data in TUM format
     maplidar.read_data_tum(directory=directory, filename='/robot0/SLAM/data_poses_tum.txt')
@@ -34,26 +36,24 @@ def map_viewer():
     # visualize the map on the UTM reference frame
     # maplidar.draw_map(keyframe_sampling=keyframe_sampling, voxel_size=voxel_size)
     # or build and write pcd!
+
+    # caution, voxelizing the local clouds, but not the global pointcloud
     pointcloud_global = maplidar.build_map(keyframe_sampling=keyframe_sampling,
                                            voxel_size=voxel_size)
-    maplidar.save_pcd_to_file(pointcloud=pointcloud_global, filename=directory + '/' + output_map_filename)
-    # now remove dynamic objects.
-    # if known, dynamic objects in this case are people, which should be at known heights
-    # radii = [0.5, 30]
-    # heights = [-2, 2]
-    # keyframe_sampling = 100
-    # global_pcd = maplidar.delete_empty_spaces_in_map(pointcloud_global=pointcloud_global,
-    #                                                  voxel_size=voxel_size,
-    #                                                             radii=radii,
-    #                                                             heights=heights,
-    #                                                             keyframe_sampling=keyframe_sampling)
+    print('GLOBAL POINTCLOUD INFO:')
+    print(pointcloud_global)
+    # also downsample the global map obtained
+    pointcloud_global_sampled = pointcloud_global.voxel_down_sample(voxel_size=voxel_size)
+    print('GLOBAL POINTCLOUD INFO after voxelization:')
+    print(pointcloud_global_sampled)
 
-    # MODIFY!
+    # paint
+    pointcloud_global.paint_uniform_color([0.5, 0.5, 0.5])
+    o3d.visualization.draw_geometries([pointcloud_global, pointcloud_global_sampled])
 
-    # or build and write occupancy grid map!
-    # maplidar.build_occupancy_grid_map(filename=directory + '/occupancy_map.png',
-    #                                   keyframe_sampling=keyframe_sampling,
-    #                                   voxel_size=voxel_size)
+    # save the result to a pcd file
+    print('Saving sampled global map to file: ', output_map_filename)
+    maplidar.save_pcd_to_file(pointcloud=pointcloud_global_sampled, filename=directory + '/' + output_map_filename)
 
 
 if __name__ == '__main__':
