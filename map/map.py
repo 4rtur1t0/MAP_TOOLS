@@ -10,8 +10,8 @@ import pandas as pd
 from tools.plottools import plot_gps_OSM
 from PIL import Image
 import open3d as o3d
-
 from config import PARAMETERS
+from collections import defaultdict
 
 
 class Map():
@@ -105,44 +105,37 @@ class Map():
                                      heights=[-2, 50],
                                      keyframe_sampling=keyframe_sampling)
 
-    def build_map(self, voxel_size, keyframe_sampling=20):
+    def build_map(self, voxel_size, radii, heights, keyframe_sampling=20):
         """
         Builds a global pcd map and writes to disk.
         """
         global_transforms = self.robotpath.get_transforms()
         global_pcd = self.lidarscanarray.build_map(global_transforms=global_transforms,
                                                    voxel_size=voxel_size,
-                                                   radii=[0.5, 120],
-                                                   heights=[-2, 50],
+                                                   radii=radii,
+                                                   heights=heights,
                                                    keyframe_sampling=keyframe_sampling)
         return global_pcd
+
+
 
     def save_pcd_to_file(self, pointcloud, filename='global_map.pcd'):
         o3d.io.write_point_cloud(filename=filename, pointcloud=pointcloud, print_progress=True)
 
+
+
     # def delete_empty_spaces_in_map(self, pointcloud_global, voxel_size, radii,
     #                                heights,  keyframe_sampling):
     #     global_transforms = self.robotpath.get_transforms()
-    #     global_pcd = self.lidarscanarray.delete_empty_spaces_in_map_prob(pointcloud_global=pointcloud_global,
-    #                                                                      global_transforms=global_transforms,
-    #                                                                      voxel_size=voxel_size,
-    #                                                                      radii=radii,
-    #                                                                      heights=heights,
-    #                                                                      keyframe_sampling=keyframe_sampling)
+    #     global_pcd = self.lidarscanarray.delete_empty_spaces_in_map(pointcloud_global=pointcloud_global,
+    #                                                                       global_transforms=global_transforms,
+    #                                                                       voxel_size=voxel_size,
+    #                                                                       radii=radii,
+    #                                                                       heights=heights,
+    #                                                                       keyframe_sampling=keyframe_sampling)
     #     return global_pcd
 
-    def delete_empty_spaces_in_map(self, pointcloud_global, voxel_size, radii,
-                                   heights,  keyframe_sampling):
-        global_transforms = self.robotpath.get_transforms()
-        global_pcd = self.lidarscanarray.delete_empty_spaces_in_map(pointcloud_global=pointcloud_global,
-                                                                          global_transforms=global_transforms,
-                                                                          voxel_size=voxel_size,
-                                                                          radii=radii,
-                                                                          heights=heights,
-                                                                          keyframe_sampling=keyframe_sampling)
-        return global_pcd
-
-    def build_occupancy_grid_map(self, filename, voxel_size, keyframe_sampling=20):
+    def build_occupancy_grid_map(self, filename, voxel_size, radii, heights, keyframe_sampling=20):
         """
         Possibilities:
         - view path
@@ -152,12 +145,17 @@ class Map():
         """
         global_transforms = self.robotpath.get_transforms()
         # caution. Build the map by limiting radii to a local context
-        global_pcd = self.lidarscanarray.build_map(global_transforms=global_transforms,
+        # global_pcd = self.lidarscanarray.build_map(global_transforms=global_transforms,
+        #                                            voxel_size=voxel_size,
+        #                                            radii=[0.5, 15],
+        #                                            heights=[-0.7, 1.0],
+        #                                            keyframe_sampling=keyframe_sampling)
+        obstacles_pcd = self.lidarscanarray.build_obstacle_map(global_transforms=global_transforms,
                                                    voxel_size=voxel_size,
-                                                   radii=[0.5, 15],
-                                                   heights=[-0.7, 1.0],
+                                                   radii=radii,
+                                                   heights=heights,
                                                    keyframe_sampling=keyframe_sampling)
-        self.save_to_image(global_pcd, filename=filename)
+        self.save_to_image(obstacles_pcd, filename=filename)
 
     def save_to_image(self, global_pcd, filename='occupancy_map.png'):
         # 3. Parámetros del mapa

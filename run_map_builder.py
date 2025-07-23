@@ -28,32 +28,36 @@ def map_viewer():
     # keyframe_sampling = 500
     # use, for example, voxel_size=0.2. Use voxel_size=None to use full resolution
     # we are voxelizing the local scans and the resulting global map as well
-    voxel_size = 0.1
+    voxel_size = 0.05
     maplidar = Map()
     # read the data in TUM format
     maplidar.read_data_tum(directory=directory, filename='/robot0/SLAM/data_poses_tum.txt')
 
-    # visualize the map on the UTM reference frame
+    # draw the map now. # or build and write pcd!
     # maplidar.draw_map(keyframe_sampling=keyframe_sampling, voxel_size=voxel_size)
-    # or build and write pcd!
+
 
     # caution, voxelizing the local clouds, but not the global pointcloud
+    # voxel size is a needed discretization of the local lidar
+    radii = [0.5, 50]
+    heights = [-2, 100]
     pointcloud_global = maplidar.build_map(keyframe_sampling=keyframe_sampling,
-                                           voxel_size=voxel_size)
+                                           voxel_size=voxel_size, radii=radii,
+                                           heights=heights)
+    # remove, then downsample...
     print('GLOBAL POINTCLOUD INFO:')
     print(pointcloud_global)
     # also downsample the global map obtained
-    pointcloud_global_sampled = pointcloud_global.voxel_down_sample(voxel_size=voxel_size)
-    print('GLOBAL POINTCLOUD INFO after voxelization:')
-    print(pointcloud_global_sampled)
+    # pointcloud_global_sampled = pointcloud_global.voxel_down_sample(voxel_size=voxel_size)
+    # print('GLOBAL POINTCLOUD INFO after voxelization:')
+    # print(pointcloud_global_sampled)
 
     # paint
-    pointcloud_global.paint_uniform_color([0.5, 0.5, 0.5])
-    o3d.visualization.draw_geometries([pointcloud_global, pointcloud_global_sampled])
+    o3d.visualization.draw_geometries([pointcloud_global])
 
     # save the result to a pcd file
     print('Saving sampled global map to file: ', output_map_filename)
-    maplidar.save_pcd_to_file(pointcloud=pointcloud_global_sampled, filename=directory + '/' + output_map_filename)
+    maplidar.save_pcd_to_file(pointcloud=pointcloud_global, filename=directory + '/' + output_map_filename)
 
 
 if __name__ == '__main__':

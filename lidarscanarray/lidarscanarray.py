@@ -3,7 +3,6 @@ import bisect
 import numpy as np
 from artelib.homogeneousmatrix import HomogeneousMatrix
 import open3d as o3d
-
 from artelib.rotationmatrix import RotationMatrix
 from lidarscanarray.lidarscan import LiDARScan
 from eurocreader.eurocreader import EurocReader
@@ -248,11 +247,7 @@ class LiDARScanArray:
             kf.load_pointcloud()
             kf.filter_radius(radii=radii)
             kf.filter_height(heights=heights)
-            # print('Local pointcloud info')
-            # print(kf.pointcloud)
             kf.down_sample(voxel_size=voxel_size)
-            # print('Local pointcloud info')
-            # print(kf.pointcloud)
             Ti = global_transforms[i]
             # transform to global and
             pointcloud_temp = kf.transform(T=Ti.array)
@@ -262,35 +257,63 @@ class LiDARScanArray:
             kf.unload_pointcloud()
         print('FINISHED! Use the renderer to view the map')
         # draw the whole map
-        o3d.visualization.draw_geometries([pointcloud_global])
+        # o3d.visualization.draw_geometries([pointcloud_global])
         return pointcloud_global
 
-    # def delete_empty_spaces_in_map_prob(self, pointcloud_global, global_transforms, keyframe_sampling=10, radii=None, heights=None, voxel_size=0.1):
+    def build_obstacle_map(self, global_transforms, keyframe_sampling=10, radii=None, heights=None, voxel_size=0.1):
+        """
+        Caution: in this case, the map is built using a pointcloud and adding the points to it. This may require a great
+        amount of memory, however the result may be saved easily
+        """
+        if radii is None:
+            radii = [0.5, 35.0]
+        if heights is None:
+            heights = [-120.0, 120.0]
+
+        # similar to building a global map of points, but saving
+        print('NOW, BUILD THE OBSTACLE MAP')
+        # transform all keyframes to global coordinates.
+        pointcloud_global = o3d.geometry.PointCloud()
+        for i in range(0, len(self.lidar_scans), keyframe_sampling):
+            print("Keyframe: ", i, "out of: ", len(self.lidar_scans), end='\n')
+            kf = self.lidar_scans[i]
+            kf.load_pointcloud()
+            kf.filter_radius(radii=radii)
+            kf.filter_height(heights=heights)
+            kf.down_sample(voxel_size=voxel_size)
+            Ti = global_transforms[i]
+            # transform to global and
+            pointcloud_temp = kf.transform(T=Ti.array)
+
+            pointcloud_obstacles = find_obstacles(pointcloud_temp)
+
+            # yuxtaponer los pointclouds
+            pointcloud_global = pointcloud_global + pointcloud_temp
+            # unload pointcloud to save memory
+            kf.unload_pointcloud()
+        print('FINISHED! Use the renderer to view the map')
+        # draw the whole map
+        # o3d.visualization.draw_geometries([pointcloud_global])
+        return pointcloud_global
+
+    #
+    #
+    # def delete_empty_spaces_in_map(self, pointcloud_global, global_transforms, keyframe_sampling=10, radii=None,
+    #                                heights=None, voxel_size=0.2):
     #     """
     #     Caution: in this case, the map is built using a pointcloud and adding the points to it. This may require a great
     #     amount of memory, however the result may be saved easily
     #     """
-    #     if radii is None:
-    #         radii = [0.5, 35.0]
-    #     if heights is None:
-    #         heights = [-120.0, 120.0]
     #     pointcloud_global_kdtree = o3d.geometry.KDTreeFlann(pointcloud_global)
-    #     # paint global pointcloud
-    #     # pointcloud_global.paint_uniform_color([0.1, 0.1, 0.8])
     #
     #     # Visualize the points to remove
-    #     pointcloud_remove = o3d.geometry.PointCloud()
-    #     # caution . radius
-    #     # radius_remove = 0.2
     #     print(30*'=')
     #     print('NOW, DELETE EMPTY SPACES')
     #     print('FOR EACH POINTCLOUD, FIND THE POINTS THAT SHOULD BE IN EMPTY SPACES AND REMOVE THEM')
     #     print(30 * '=')
-    #     # all_indices = set()
-    #     all_indices = [] #set()
-    #
-    #     # for i in range(0, len(self.lidar_scans), keyframe_sampling):
-    #     for i in range(12000, 12500, 5):
+    #     indices_to_remove = []
+    #     for i in range(0, len(self.lidar_scans), keyframe_sampling):
+    #     # for i in range(11050, 11150, 5):
     #         print("Keyframe: ", i, "out of: ", len(self.lidar_scans), end='\n')
     #         kf = self.lidar_scans[i]
     #         kf.load_pointcloud()
@@ -299,30 +322,21 @@ class LiDARScanArray:
     #         kf.down_sample(voxel_size=voxel_size)
     #         Ti = global_transforms[i]
     #         # transform to global and
-    #         pointcloud_temp = kf.transform(T=Ti.array)
+    #         pointcloud_lidar = kf.transform(T=Ti.array)
     #         pi = Ti.pos()
-    #         points_global_i = pointcloud_temp.points
+    #         # points_lidar_global_i = pointcloud_lidar.points
     #         # remove local points between pi (origin) and points_global_i using spheres of radius r
-    #         idxs = self.delete_empty_spaces_at_local(pointcloud_global_kdtree, pi, points_global_i)
-    #         # pcd_dynamic = pointcloud_global.select_by_index(list(idxs), invert=False)
+    #         # idxs = self.delete_empty_spaces_at_local2(pointcloud_global_kdtree, pi, points_lidar_global_i)
+    #         # idxs = self.delete_empty_spaces_at_local3(pointcloud_global, pointcloud_global_kdtree, pi, pointcloud_lidar)
+    #         idxs = self.delete_empty_spaces_at_local4(pointcloud_global, pointcloud_global_kdtree, pi, pointcloud_lidar)
+    #         pcd_dynamic = pointcloud_global.select_by_index(list(idxs), invert=False)
     #         # draw the whole map and the points to remove
-    #         # o3d.visualization.draw_geometries([pcd_dynamic])
-    #         # all_indices.update(idxs)
-    #         all_indices.append(idxs)
+    #         o3d.visualization.draw_geometries([pcd_dynamic])
+    #         indices_to_remove.append(idxs)
     #         # unload pointcloud to save memory
     #         kf.unload_pointcloud()
     #     # Init all indices with a 100% occupancy likelihood
-    #     indices_occupancy = 100.0*np.ones(len(pointcloud_global.points))
-    #     # all_indices.update(idxs)
-    #     all_indices = [item for sublist in all_indices for item in sublist]
-    #
-    #     # reduce the indices that should be in empty space
-    #     for i in all_indices:
-    #         indices_occupancy[i] -= 1.0
-    #
-    #     plt.plot(indices_occupancy)
-    #     plt.show()
-    #     indices_to_remove = np.where(indices_occupancy < 95.0)[0]
+    #     indices_to_remove = [item for sublist in indices_to_remove for item in sublist]
     #
     #     # removable_points = np.asarray(pointcloud_global.points)[all_indices]
     #     # print('Found ', len(removable_points), 'dynamic points on the whole process at the robot moving origin')
@@ -332,6 +346,7 @@ class LiDARScanArray:
     #     pcd_dynamic = pointcloud_global.select_by_index(list(indices_to_remove), invert=False)
     #     pcd_dynamic.paint_uniform_color([1.0, 0, 0])
     #     o3d.visualization.draw_geometries([pcd_dynamic])
+    #     o3d.visualization.draw_geometries([pointcloud_global, pcd_dynamic])
     #
     #     # remove the points and draw
     #     pcd_filtered = pointcloud_global.select_by_index(list(indices_to_remove), invert=True)
@@ -341,368 +356,294 @@ class LiDARScanArray:
     #     # o3d.visualization.draw_geometries([pointcloud_global, pcd_filtered])
     #     o3d.visualization.draw_geometries([pointcloud_global, pcd_dynamic])
     #     return pointcloud_global
+    #
+    #
+    # def delete_empty_spaces_at_local(self, pointcloud_global_kdtree, pi, points_global_i):
+    #     # robot radius remove must be > than beam radius remove
+    #     robot_radius_remove = 0.25
+    #     beam_radius_remove = 0.02
+    #     local_indices = [] # set()
+    #     # remove at the robot center. use a radius that approximates the whole robot
+    #     [_, idxs, _] = pointcloud_global_kdtree.search_radius_vector_3d(pi, robot_radius_remove)
+    #     # local_indices.update(idxs)
+    #     local_indices.append(list(idxs))
+    #     # for each point in pointcloud, find interpolations
+    #     for pj in points_global_i:
+    #         # the distance from the LiDAR origin to the point
+    #         dist = np.linalg.norm(pj - pi)
+    #         if dist == 0:
+    #             continue
+    #         if dist <= robot_radius_remove:
+    #             continue
+    #         u = (pj - pi)/dist
+    #         r1 = robot_radius_remove
+    #         r2 = dist-10.0*beam_radius_remove
+    #         n = int(np.ceil((r2-r1)/(2*beam_radius_remove)))
+    #         r = np.linspace(r1, r2, n)
+    #         for ri in r:
+    #             # interpolate point using initial point, unit vector and interpolated distance
+    #             pn = pi + ri*u
+    #             # find indices close to the point
+    #             [_, idxs, _] = pointcloud_global_kdtree.search_radius_vector_3d(pn, beam_radius_remove)
+    #             # add to the list.
+    #             # local_indices.update(idxs)
+    #             local_indices.append(list(idxs))
+    #     # flatten list
+    #     local_indices = [item for sublist in local_indices for item in sublist]
+    #     return local_indices
+    #
+    #
+    # def delete_empty_spaces_at_local2(self, pointcloud_global_kdtree, p0, points_global_i_lidar):
+    #     # robot radius remove must be > than beam radius remove
+    #     # two ways to remove.
+    #     # a) Remove where the robot has been exactly
+    #     # b) Remove on the very clear empty spaces with laser beams with distance over
+    #     r_min = 20.0
+    #     robot_radius_remove = 0.3
+    #     beam_radius_remove = 0.05
+    #     local_indices = []
+    #
+    #     # remove radius below r_min in pointcloud
+    #     dist = np.linalg.norm(points_global_i_lidar - p0, axis=1)
+    #     idxs = np.where(dist > r_min)
+    #     points_global_i_lidar = np.asarray(points_global_i_lidar)[idxs]
+    #
+    #     # remove at the robot center. use a radius that approximates the whole robot
+    #     [_, idxs, _] = pointcloud_global_kdtree.search_radius_vector_3d(p0, robot_radius_remove)
+    #     # local_indices.update(idxs)
+    #     local_indices.append(list(idxs))
+    #     # for each point in pointcloud, find interpolations
+    #     for pj in points_global_i_lidar:
+    #         # the actual distance from the LiDAR origin to the point
+    #         dist = np.linalg.norm(pj - p0)
+    #         if dist == 0:
+    #             continue
+    #         if dist <= robot_radius_remove:
+    #             continue
+    #         if dist <= r_min:
+    #             continue
+    #         u = (pj - p0)/dist
+    #         r1 = robot_radius_remove
+    #         r2 = dist/5.0 #yes, find points that should be empty at a distance below a third-10.0*beam_radius_remove
+    #         n = int(np.ceil((r2-r1)/(2*beam_radius_remove)))
+    #         r = np.linspace(r1, r2, n)
+    #         for ri in r:
+    #             # interpolate point using initial point, unit vector and interpolated distance
+    #             pn = p0 + ri*u
+    #             # find indices close to the point
+    #             [_, idxs, _] = pointcloud_global_kdtree.search_radius_vector_3d(pn, beam_radius_remove)
+    #             # add to the list.
+    #             local_indices.append(list(idxs))
+    #     # flatten list
+    #     local_indices = [item for sublist in local_indices for item in sublist]
+    #     return local_indices
 
-    def delete_empty_spaces_in_map(self, pointcloud_global, global_transforms, keyframe_sampling=10, radii=None,
-                                   heights=None, voxel_size=0.2):
-        """
-        Caution: in this case, the map is built using a pointcloud and adding the points to it. This may require a great
-        amount of memory, however the result may be saved easily
-        """
-        pointcloud_global_kdtree = o3d.geometry.KDTreeFlann(pointcloud_global)
+    #
+    #
+    # def delete_empty_spaces_at_local3(self, pointcloud_global, pointcloud_global_kdtree, p0, pointcloud_lidar):
+    #     """
+    #     Obtain a submap of points around the robot position p0. We are willing to detect dynamic objects at this place.
+    #     We are obtaining points that should be at a larger distance, according to the lidar observation
+    #     """
+    #     # robot radius remove must be > than beam radius remove
+    #     # two ways to remove.
+    #     # a) Remove where the robot has been exactly
+    #     # b) Remove on the very clear empty spaces with laser beams with distance over
+    #     global_submap_radius = 5.0
+    #
+    #     # min radius of the lidar to check for empty spaces, i. e. 2*global_submap_radius
+    #     r_min = 10.0
+    #     # remove points around the robot
+    #     robot_radius_remove = 0.3
+    #     # detect points at this distance from the beam.
+    #     beam_radius_remove = 0.1
+    #     # the total list of indices to remove from the global map
+    #     local_indices = []
+    #
+    #     # the initial maps
+    #     pointcloud_lidar.paint_uniform_color([1.0, 0.0, 0.0])
+    #     o3d.visualization.draw_geometries([pointcloud_global, pointcloud_lidar])
+    #
+    #
+    #     # remove at the robot center. use a radius that approximates the whole robot
+    #     [_, idxs, _] = pointcloud_global_kdtree.search_radius_vector_3d(p0, robot_radius_remove)
+    #     local_indices.append(list(idxs))
+    #
+    #
+    #     # OBTAIN A SUBMAP OF THE GLOBAL MAP
+    #     # also filter points above and below z from p0!!!
+    #     [_, idxs, _] = pointcloud_global_kdtree.search_radius_vector_3d(p0, global_submap_radius)
+    #     pointcloud_global = pointcloud_global.select_by_index(list(idxs), invert=False)
+    #     # filter z
+    #     pointcloud_global_points = np.asarray(pointcloud_global.points)
+    #     mask = (pointcloud_global_points[:, 2] - p0[2] > -0.5) & (pointcloud_global_points[:, 2] - p0[2] < 1.5)
+    #     idxs = np.where(mask)[0]
+    #     pointcloud_global = pointcloud_global.select_by_index(list(idxs), invert=False)
+    #     o3d.visualization.draw_geometries([pointcloud_global, pointcloud_lidar])
+    #     pointcloud_global_points = np.asarray(pointcloud_global.points)
+    #
+    #     # FILTER LIDAR points
+    #     pointcloud_lidar_points = np.asarray(pointcloud_lidar.points)
+    #     # obtain points/radius that are above r_min
+    #     dist = np.linalg.norm(pointcloud_lidar_points - p0, axis=1)
+    #     idxs = np.where(dist > r_min)[0]
+    #     pointcloud_lidar = pointcloud_lidar.select_by_index(list(idxs), invert=False)
+    #     pointcloud_lidar_points = np.asarray(pointcloud_lidar.points)
+    #     o3d.visualization.draw_geometries([pointcloud_global, pointcloud_lidar])
+    #
+    #
+    #
+    #     print('Number of points in lidar: ', len(pointcloud_lidar_points))
+    #     print('Number of points in submap: ', len(pointcloud_global_points))
+    #
+    #
+    #     # for each point in the lidar pointcloud LiDAR observation find points at close distance
+    #     # per a cadascú dels rajos del lidar no hem de trobar cap objecte més a prop
+    #     # esta observació del lidar ha sigut ja filtrada
+    #     i = 0
+    #     for pj in pointcloud_lidar_points:
+    #         i += 1
+    #         print('i out of: ', i, len(pointcloud_lidar_points))
+    #         # the actual distance from the LiDAR origin to the point
+    #         dist = np.linalg.norm(pj - p0)
+    #         # if dist == 0:
+    #         #     continue
+    #         # if dist <= robot_radius_remove:
+    #         #     continue
+    #         # if dist <= r_min:
+    #         #     continue
+    #         # compute the unit direction vector
+    #         u = (pj - p0)/dist
+    #         p_rel = pointcloud_global_points - p0
+    #         proj = np.dot(p_rel, u)[:, None]*u
+    #         dist_vectors = p_rel - proj
+    #         distances = np.linalg.norm(dist_vectors, axis=1)
+    #         # find distances to the ray which are below threshold
+    #         idxs = np.where(distances < beam_radius_remove)[0]
+    #         # close_points_to_line = pointcloud_global[mask]
+    #         # store the original indices of the global map
+    #         # if len(idxs) > 5:
+    #         #     continue
+    #         idxs = candidates_local[idxs]
+    #         local_indices.append(list(idxs))
+    #
+    #     # flatten list
+    #     local_indices = [item for sublist in local_indices for item in sublist]
+    #     return local_indices
+    #
+    #
+    # def delete_empty_spaces_at_local4(self, pointcloud_global, pointcloud_global_kdtree, p0, pointcloud_lidar):
+    #     """
+    #     Obtain a submap of points around the robot position p0. We are willing to detect dynamic objects at this place.
+    #     We are obtaining points that should be at a larger distance, according to the lidar observation
+    #     """
+    #     global_submap_radius = 5.0
+    #     lidar_radius_action = 0.2
+    #     pointcloud_global_points = np.asarray(pointcloud_global.points)
+    #
+    #     # OBTAIN A SUBMAP OF THE GLOBAL MAP
+    #     # also filter points above and below z from p0!!!
+    #     [_, indices_radius, _] = pointcloud_global_kdtree.search_radius_vector_3d(p0, global_submap_radius)
+    #     mask = np.zeros(len(pointcloud_global_points), dtype=bool)
+    #     mask[indices_radius] = True
+    #     mask = mask & (pointcloud_global_points[:, 2] - p0[2] > -0.8) & (pointcloud_global_points[:, 2] - p0[2] < 1.5)
+    #     indices_in_global_map = np.where(mask)[0]
+    #     pointcloud_global_view = pointcloud_global.select_by_index(list(indices_in_global_map), invert=False)
+    #     pointcloud_lidar.paint_uniform_color([1.0, 0.1, 0.1])
+    #     o3d.visualization.draw_geometries([pointcloud_global_view, pointcloud_lidar])
+    #     # pointcloud_global_points = np.asarray(pointcloud_global.points)
+    #     pointcloud_lidar_points = np.asarray(pointcloud_lidar.points)
+    #
+    #     print('Number of points in lidar: ', len(pointcloud_lidar_points))
+    #     print('Number of points in global submap: ', len(indices_in_global_map))
+    #     existence_prob = 0.0*np.ones(len(indices_in_global_map))
+    #     # We sum the probability if the LiDAR points support it
+    #     # for i in range(len(pointcloud_global_points)):
+    #     for i in range(len(existence_prob)):
+    #         j = indices_in_global_map[i]
+    #         # print('i out of: ', i, len(pointcloud_lidar_points))
+    #         # the actual distance from the LiDAR origin to the point
+    #         pj = pointcloud_global_points[j]
+    #         dist = np.linalg.norm(pointcloud_lidar_points - pj, axis=1)
+    #         d = min(dist)
+    #         if d < lidar_radius_action:
+    #             existence_prob[i] += 0.1
+    #     # filter the points in the global map that do not exist (with low existence probability
+    #     mask = np.where(existence_prob < 0.1)[0]
+    #     return indices_in_global_map[mask]
 
-        # Visualize the points to remove
-        print(30*'=')
-        print('NOW, DELETE EMPTY SPACES')
-        print('FOR EACH POINTCLOUD, FIND THE POINTS THAT SHOULD BE IN EMPTY SPACES AND REMOVE THEM')
-        print(30 * '=')
-        all_indices = []
-        # for i in range(0, len(self.lidar_scans), keyframe_sampling):
-        for i in range(11050, 11100, 5):
-            print("Keyframe: ", i, "out of: ", len(self.lidar_scans), end='\n')
-            kf = self.lidar_scans[i]
-            kf.load_pointcloud()
-            kf.filter_radius(radii=radii)
-            kf.filter_height(heights=heights)
-            kf.down_sample(voxel_size=voxel_size)
-            Ti = global_transforms[i]
-            # transform to global and
-            pointcloud_lidar = kf.transform(T=Ti.array)
-            pi = Ti.pos()
-            # points_lidar_global_i = pointcloud_lidar.points
-            # remove local points between pi (origin) and points_global_i using spheres of radius r
-            # idxs = self.delete_empty_spaces_at_local2(pointcloud_global_kdtree, pi, points_lidar_global_i)
-            # idxs = self.delete_empty_spaces_at_local3(pointcloud_global, pointcloud_global_kdtree, pi, pointcloud_lidar)
-            idxs = self.delete_empty_spaces_at_local4(pointcloud_global, pointcloud_global_kdtree, pi, pointcloud_lidar)
-            pcd_dynamic = pointcloud_global.select_by_index(list(idxs), invert=False)
-            # draw the whole map and the points to remove
-            # o3d.visualization.draw_geometries([pcd_dynamic])
-            all_indices.append(idxs)
-            # unload pointcloud to save memory
-            kf.unload_pointcloud()
-        # Init all indices with a 100% occupancy likelihood
-        indices_occupancy = 0.0*np.ones(len(pointcloud_global.points))
-        all_indices = [item for sublist in all_indices for item in sublist]
-        # reduce the indices that should be in empty space
-        for i in all_indices:
-            indices_occupancy[i] += 1.0
+#
+# def difference_of_normals(pointcloud, small_radius, large_radius):
+#     pointcloud.estimate_normals(radius=small_radius)
+#     # Copy to preserve the normals for small radius
+#     normals_small = np.asarray(pointcloud.pointcloud.normals).copy()
+#     pointcloud.estimate_normals(radius=large_radius)
+#     normals_large = np.asarray(pointcloud.pointcloud.normals).copy()
+#     # Compute the Difference of Normals (DoN)
+#     diff_norm = (normals_large - normals_small) / 2
+#     return diff_norm
+#
+# def filter_edge_indices(don_abs, data, threshold, max_distance, min_distance):
+#     distances = np.linalg.norm(data, axis=1)
+#     mask = (don_abs > threshold) & (distances < max_distance) & (distances > min_distance)
+#     edge_indices = np.where(mask)[0]
+#     return edge_indices
+#
+# def filter_collision_indices(min_distance, margin, data):
+#     if min_distance > 2:
+#         return np.array([], dtype=int)
+#     size_x, size_y, size_z = 0.7, 1, 1.25
+#     wheel_radius = 0.35463
+#     x, y, z = np.abs(data[:, 0]), np.abs(data[:, 1]), data[:, 2]
+#     lidar_height = 1.1325
+#     mask = ((x - margin < size_x / 2) & (y - margin < size_y / 2) &
+#             (wheel_radius < (lidar_height + z)) & ((lidar_height + z) < size_z))
+#     collision_indices = np.where(mask)[0]
+#     return collision_indices
 
-        plt.plot(indices_occupancy)
-        plt.show()
-        indices_to_remove = np.where(indices_occupancy > 2.0)[0]
-
-        # removable_points = np.asarray(pointcloud_global.points)[all_indices]
-        # print('Found ', len(removable_points), 'dynamic points on the whole process at the robot moving origin')
-        # build a temporary removal pointcloud
-        # pointcloud_remove.points = o3d.utility.Vector3dVector(removable_points)
-        print('FINISHED! Use the renderer to view the map')
-        pcd_dynamic = pointcloud_global.select_by_index(list(indices_to_remove), invert=False)
-        pcd_dynamic.paint_uniform_color([1.0, 0, 0])
-        o3d.visualization.draw_geometries([pcd_dynamic])
-        o3d.visualization.draw_geometries([pointcloud_global, pcd_dynamic])
-
-        # remove the points and draw
-        pcd_filtered = pointcloud_global.select_by_index(list(indices_to_remove), invert=True)
-        # pcd_filtered.paint_uniform_color([1.0, 0, 0])
-        o3d.visualization.draw_geometries([pcd_filtered])
-        # draw the whole map
-        # o3d.visualization.draw_geometries([pointcloud_global, pcd_filtered])
-        o3d.visualization.draw_geometries([pointcloud_global, pcd_dynamic])
-        return pointcloud_global
-
-
-    def delete_empty_spaces_at_local(self, pointcloud_global_kdtree, pi, points_global_i):
-        # robot radius remove must be > than beam radius remove
-        robot_radius_remove = 0.25
-        beam_radius_remove = 0.02
-        local_indices = [] # set()
-        # remove at the robot center. use a radius that approximates the whole robot
-        [_, idxs, _] = pointcloud_global_kdtree.search_radius_vector_3d(pi, robot_radius_remove)
-        # local_indices.update(idxs)
-        local_indices.append(list(idxs))
-        # for each point in pointcloud, find interpolations
-        for pj in points_global_i:
-            # the distance from the LiDAR origin to the point
-            dist = np.linalg.norm(pj - pi)
-            if dist == 0:
-                continue
-            if dist <= robot_radius_remove:
-                continue
-            u = (pj - pi)/dist
-            r1 = robot_radius_remove
-            r2 = dist-10.0*beam_radius_remove
-            n = int(np.ceil((r2-r1)/(2*beam_radius_remove)))
-            r = np.linspace(r1, r2, n)
-            for ri in r:
-                # interpolate point using initial point, unit vector and interpolated distance
-                pn = pi + ri*u
-                # find indices close to the point
-                [_, idxs, _] = pointcloud_global_kdtree.search_radius_vector_3d(pn, beam_radius_remove)
-                # add to the list.
-                # local_indices.update(idxs)
-                local_indices.append(list(idxs))
-        # flatten list
-        local_indices = [item for sublist in local_indices for item in sublist]
-        return local_indices
-
-
-    def delete_empty_spaces_at_local2(self, pointcloud_global_kdtree, p0, points_global_i_lidar):
-        # robot radius remove must be > than beam radius remove
-        # two ways to remove.
-        # a) Remove where the robot has been exactly
-        # b) Remove on the very clear empty spaces with laser beams with distance over
-        r_min = 20.0
-        robot_radius_remove = 0.3
-        beam_radius_remove = 0.05
-        local_indices = []
-
-        # remove radius below r_min in pointcloud
-        dist = np.linalg.norm(points_global_i_lidar - p0, axis=1)
-        idxs = np.where(dist > r_min)
-        points_global_i_lidar = np.asarray(points_global_i_lidar)[idxs]
-
-        # remove at the robot center. use a radius that approximates the whole robot
-        [_, idxs, _] = pointcloud_global_kdtree.search_radius_vector_3d(p0, robot_radius_remove)
-        # local_indices.update(idxs)
-        local_indices.append(list(idxs))
-        # for each point in pointcloud, find interpolations
-        for pj in points_global_i_lidar:
-            # the actual distance from the LiDAR origin to the point
-            dist = np.linalg.norm(pj - p0)
-            if dist == 0:
-                continue
-            if dist <= robot_radius_remove:
-                continue
-            if dist <= r_min:
-                continue
-            u = (pj - p0)/dist
-            r1 = robot_radius_remove
-            r2 = dist/5.0 #yes, find points that should be empty at a distance below a third-10.0*beam_radius_remove
-            n = int(np.ceil((r2-r1)/(2*beam_radius_remove)))
-            r = np.linspace(r1, r2, n)
-            for ri in r:
-                # interpolate point using initial point, unit vector and interpolated distance
-                pn = p0 + ri*u
-                # find indices close to the point
-                [_, idxs, _] = pointcloud_global_kdtree.search_radius_vector_3d(pn, beam_radius_remove)
-                # add to the list.
-                local_indices.append(list(idxs))
-        # flatten list
-        local_indices = [item for sublist in local_indices for item in sublist]
-        return local_indices
-
-
-
-    def delete_empty_spaces_at_local3(self, pointcloud_global, pointcloud_global_kdtree, p0, pointcloud_lidar):
-        """
-        Obtain a submap of points around the robot position p0. We are willing to detect dynamic objects at this place.
-        We are obtaining points that should be at a larger distance, according to the lidar observation
-        """
-        # robot radius remove must be > than beam radius remove
-        # two ways to remove.
-        # a) Remove where the robot has been exactly
-        # b) Remove on the very clear empty spaces with laser beams with distance over
-        global_submap_radius = 5.0
-
-        # min radius of the lidar to check for empty spaces, i. e. 2*global_submap_radius
-        r_min = 10.0
-        # remove points around the robot
-        robot_radius_remove = 0.3
-        # detect points at this distance from the beam.
-        beam_radius_remove = 0.1
-        # the total list of indices to remove from the global map
-        local_indices = []
-
-        # the initial maps
-        pointcloud_lidar.paint_uniform_color([1.0, 0.0, 0.0])
-        o3d.visualization.draw_geometries([pointcloud_global, pointcloud_lidar])
-
-
-        # remove at the robot center. use a radius that approximates the whole robot
-        [_, idxs, _] = pointcloud_global_kdtree.search_radius_vector_3d(p0, robot_radius_remove)
-        local_indices.append(list(idxs))
-
-
-        # OBTAIN A SUBMAP OF THE GLOBAL MAP
-        # also filter points above and below z from p0!!!
-        [_, idxs, _] = pointcloud_global_kdtree.search_radius_vector_3d(p0, global_submap_radius)
-        pointcloud_global = pointcloud_global.select_by_index(list(idxs), invert=False)
-        # filter z
-        pointcloud_global_points = np.asarray(pointcloud_global.points)
-        mask = (pointcloud_global_points[:, 2] - p0[2] > -0.5) & (pointcloud_global_points[:, 2] - p0[2] < 1.5)
-        idxs = np.where(mask)[0]
-        pointcloud_global = pointcloud_global.select_by_index(list(idxs), invert=False)
-        o3d.visualization.draw_geometries([pointcloud_global, pointcloud_lidar])
-        pointcloud_global_points = np.asarray(pointcloud_global.points)
-
-        # FILTER LIDAR points
-        pointcloud_lidar_points = np.asarray(pointcloud_lidar.points)
-        # obtain points/radius that are above r_min
-        dist = np.linalg.norm(pointcloud_lidar_points - p0, axis=1)
-        idxs = np.where(dist > r_min)[0]
-        pointcloud_lidar = pointcloud_lidar.select_by_index(list(idxs), invert=False)
-        pointcloud_lidar_points = np.asarray(pointcloud_lidar.points)
-        o3d.visualization.draw_geometries([pointcloud_global, pointcloud_lidar])
-
-
-
-        print('Number of points in lidar: ', len(pointcloud_lidar_points))
-        print('Number of points in submap: ', len(pointcloud_global_points))
-
-
-        # for each point in the lidar pointcloud LiDAR observation find points at close distance
-        # per a cadascú dels rajos del lidar no hem de trobar cap objecte més a prop
-        # esta observació del lidar ha sigut ja filtrada
-        i = 0
-        for pj in pointcloud_lidar_points:
-            i += 1
-            print('i out of: ', i, len(pointcloud_lidar_points))
-            # the actual distance from the LiDAR origin to the point
-            dist = np.linalg.norm(pj - p0)
-            # if dist == 0:
-            #     continue
-            # if dist <= robot_radius_remove:
-            #     continue
-            # if dist <= r_min:
-            #     continue
-            # compute the unit direction vector
-            u = (pj - p0)/dist
-            p_rel = pointcloud_global_points - p0
-            proj = np.dot(p_rel, u)[:, None]*u
-            dist_vectors = p_rel - proj
-            distances = np.linalg.norm(dist_vectors, axis=1)
-            # find distances to the ray which are below threshold
-            idxs = np.where(distances < beam_radius_remove)[0]
-            # close_points_to_line = pointcloud_global[mask]
-            # store the original indices of the global map
-            # if len(idxs) > 5:
-            #     continue
-            idxs = candidates_local[idxs]
-            local_indices.append(list(idxs))
-
-        # flatten list
-        local_indices = [item for sublist in local_indices for item in sublist]
-        return local_indices
-
-
-    def delete_empty_spaces_at_local4(self, pointcloud_global, pointcloud_global_kdtree, p0, pointcloud_lidar):
-        """
-        Obtain a submap of points around the robot position p0. We are willing to detect dynamic objects at this place.
-        We are obtaining points that should be at a larger distance, according to the lidar observation
-        """
-        # robot radius remove must be > than beam radius remove
-        # two ways to remove.
-        # a) Remove where the robot has been exactly
-        # b) Remove on the very clear empty spaces with laser beams with distance over
-        global_submap_radius = 5.0
-
-        # min radius of the lidar to check for empty spaces, i. e. 2*global_submap_radius
-        r_min = 10.0
-        # remove points around the robot
-        robot_radius_remove = 0.3
-        # detect points at this distance from the beam.
-        beam_radius_remove = 0.01
-        # the total list of indices to remove from the global map
-        local_indices = []
-
-
-        # remove at the robot center. use a radius that approximates the whole robot
-        [_, idxs, _] = pointcloud_global_kdtree.search_radius_vector_3d(p0, robot_radius_remove)
-        local_indices.append(list(idxs))
-
-        pointcloud_global_points = np.asarray(pointcloud_global.points)
-
-        # OBTAIN A SUBMAP OF THE GLOBAL MAP
-        # also filter points above and below z from p0!!!
-        [_, indices_radius, _] = pointcloud_global_kdtree.search_radius_vector_3d(p0, global_submap_radius)
-        mask = np.zeros(len(pointcloud_global_points), dtype=bool)
-        mask[indices_radius] = True
-        mask = mask & (pointcloud_global_points[:, 2] - p0[2] > -0.8) & (pointcloud_global_points[:, 2] - p0[2] < 1.5)
-        indices_in_global_map = np.where(mask)[0]
-        pointcloud_global = pointcloud_global.select_by_index(list(indices_in_global_map), invert=False)
-        pointcloud_lidar.paint_uniform_color([1.0, 0.1, 0.1])
-        o3d.visualization.draw_geometries([pointcloud_global, pointcloud_lidar])
-        pointcloud_global_points = np.asarray(pointcloud_global.points)
-        pointcloud_lidar_points = np.asarray(pointcloud_lidar.points)
-
-        print('Number of points in lidar: ', len(pointcloud_lidar_points))
-        print('Number of points in submap: ', len(pointcloud_global_points))
-
-        existence_prob = 0.1*np.ones(len(indices_in_global_map))
-        # for each point in the lidar pointcloud LiDAR observation find points at close distance
-        # per a cadascú dels rajos del lidar no hem de trobar cap objecte més a prop
-        # esta observació del lidar ha sigut ja filtrada
-        # i = 0
-        for i in range(len(pointcloud_global_points)):
-            # i += 1
-            # print('i out of: ', i, len(pointcloud_lidar_points))
-            # the actual distance from the LiDAR origin to the point
-            pj = pointcloud_global_points[i]
-            dist = np.linalg.norm(pointcloud_lidar_points - pj, axis=1)
-            # find distances to the ray which are below threshold
-            # idxs = np.where(dist < beam_radius_remove)[0]
-            d = min(dist)
-            if d < 0.15:
-                existence_prob[i] += 0.1
-            else:
-                existence_prob[i] -= 0.1
-
-        indices_in_global_map_exist = np.where(existence_prob > 0.0)[0]
-
-        indices_in_global_map_no_exist = np.where(existence_prob < 0.0)[0]
-
-
-            # # close_points_to_line = pointcloud_global[mask]
-            # # store the original indices of the global map
-            # # if len(idxs) > 5:
-            # #     continue
-            # # switch to global indices
-            # idxs = indices_in_global_map[idxs]
-            # local_indices.append(list(idxs))
-        # for pj in pointcloud_lidar_points:
-        #     i += 1
-        #     # print('i out of: ', i, len(pointcloud_lidar_points))
-        #     # the actual distance from the LiDAR origin to the point
-        #     dist = np.linalg.norm(pj - p0)
-        #     # compute the unit direction vector
-        #     u = (pj - p0) / dist
-        #     p_rel = pointcloud_global_points - p0
-        #     proj = np.dot(p_rel, u)[:, None] * u
-        #     dist_vectors = p_rel - proj
-        #     distances = np.linalg.norm(dist_vectors, axis=1)
-        #     # find distances to the ray which are below threshold
-        #     idxs = np.where(distances < beam_radius_remove)[0]
-        #
-        #     # close_points_to_line = pointcloud_global[mask]
-        #     # store the original indices of the global map
-        #     # if len(idxs) > 5:
-        #     #     continue
-        #     # switch to global indices
-        #     idxs = indices_in_global_map[idxs]
-        #     local_indices.append(list(idxs))
-
-        # flatten list
-        local_indices = [item for sublist in local_indices for item in sublist]
-        return local_indices
-
-
-        #
-        # # filter z
-        # pointcloud_global_points = np.asarray(pointcloud_global.points)
-        # mask = (pointcloud_global_points[:, 2] - p0[2] > -0.5) & (pointcloud_global_points[:, 2] - p0[2] < 1.5)
-        # idxs = np.where(mask)[0]
-        # pointcloud_global = pointcloud_global.select_by_index(list(idxs), invert=False)
-        # o3d.visualization.draw_geometries([pointcloud_global, pointcloud_lidar])
-        # # pointcloud_global_points = np.asarray(pointcloud_global.points)
-        #
-        # # FILTER LIDAR points
-        # pointcloud_lidar_points = np.asarray(pointcloud_lidar.points)
-        # # obtain points/radius that are above r_min
-        # dist = np.linalg.norm(pointcloud_lidar_points - p0, axis=1)
-        # idxs = np.where(dist > r_min)[0]
-        # pointcloud_lidar = pointcloud_lidar.select_by_index(list(idxs), invert=False)
-        # pointcloud_lidar_points = np.asarray(pointcloud_lidar.points)
-        # o3d.visualization.draw_geometries([pointcloud_global, pointcloud_lidar])
-
+# def find_obstacles(pointcloud, voxel, small_radius, large_radius, min_distance, max_distance, threshold, margin):
+# def find_obstacles(pointcloud):
+#     voxel_size = 0.05
+#     small_radius=0.1
+#     large_radius=0.2
+#     min_distance=0.0
+#     max_distance=5
+#     threshold = 0.05
+#     margin=0.5
+#
+#     # pointcloud = pointcloud.down_sample(voxel=voxel_size)
+#     # points = np.asarray(pointcloud.points)
+#     # filter distance
+#     # dist = np.linalg.norm(points, axis=1)
+#     # idxs = np.where((dist > min_distance) & (dist < max_distance))
+#     # pointcloud = pointcloud.select_by_index(idxs)
+#
+#     diff_norm = difference_of_normals(pointcloud, small_radius, large_radius)
+#     don_abs = np.linalg.norm(diff_norm, axis=1)
+#
+#
+#
+#     # Determine edge points using the threshold
+#     edge_indices = filter_edge_indices(don_abs, data, threshold, max_distance, min_distance)
+#
+#     # Determine collision points (robot footprint with safety margin)
+#     collision_indices = filter_collision_indices(min_distance, margin, data)
+#
+#     # Colorize: gray for all, red for edges, green for collisions
+#     colors = np.full((data.shape[0], 3), 0.5)
+#     colors[edge_indices] = [1.0, 0.0, 0.0]         # rojo
+#     colors[collision_indices] = [0.0, 1.0, 0.0]  # verde
+#     lidar.choose_colors(colors)
+#     lidar.draw_pointcloud()
+#
+#     # Combine edge and collision indices without removing duplicates
+#     total_indices = np.concatenate((edge_indices, collision_indices))
+#     edge_points = data[total_indices]
+#
+#     mask = np.ones(len(data), dtype=bool)
+#     mask[total_indices] = False
+#     free_points = data[mask]
+#     return edge_points, free_points
 
 
 
